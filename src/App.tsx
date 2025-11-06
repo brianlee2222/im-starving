@@ -25,9 +25,15 @@ export type Place = {
 const STORAGE_KEY_PREFIX = "im-starving:visited";
 const DATASET_STORAGE_KEY = "im-starving:selected-dataset";
 
+const BASE_PATH = import.meta.env.BASE_URL ?? "/";
+
+function datasetPath(filename: string) {
+  return `${BASE_PATH}${filename}`;
+}
+
 const DATASETS = [
-  { id: "singapore", label: "Singapore", path: "/places-singapore.json" },
-  { id: "hong-kong", label: "Hong Kong", path: "/places-hongkong.json" },
+  { id: "singapore", label: "Singapore", path: datasetPath("places-singapore.json") },
+  { id: "hong-kong", label: "Hong Kong", path: datasetPath("places-hongkong.json") },
 ] as const;
 
 type DatasetId = (typeof DATASETS)[number]["id"];
