@@ -667,14 +667,6 @@ export default function App() {
             >
               Clear Visited
             </button>
-            <button
-              onClick={() => {
-                if (typeof window !== "undefined") window.location.reload();
-              }}
-              className="px-3 py-2 rounded-xl border border-slate-200 bg-white text-slate-600 text-sm shadow-sm transition hover:border-slate-300 hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-400"
-            >
-              Refresh Dataset
-            </button>
           </div>
         </header>
 
