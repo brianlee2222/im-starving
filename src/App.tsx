@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 /**
  * I'm Starving — a tiny app that picks a random restaurant from your dataset.
@@ -38,6 +38,7 @@ const DATASETS = [
 
 type DatasetId = (typeof DATASETS)[number]["id"];
 const DEFAULT_DATASET_ID: DatasetId = "singapore";
+const MIN_REVIEWS_THRESHOLD = 50;
 
 type Coordinates = { lat: number; lng: number };
 
@@ -97,9 +98,20 @@ export default function App() {
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [picking, setPicking] = useState(false);
   const [datasetInfo, setDatasetInfo] = useState<{ total: number; lastUpdated?: Date } | null>(null);
+  const [minReviewsOnly, setMinReviewsOnly] = useState(false);
   const datasetMeta = useMemo(
     () => DATASETS.find((option) => option.id === datasetId) ?? DATASETS[0],
     [datasetId]
+  );
+  const passesReviewFilter = useCallback(
+    (place?: Place | null) => {
+      if (!place) return false;
+      if (!minReviewsOnly) return true;
+      const reviews = typeof place.reviewsCount === "number" ? place.reviewsCount : Number(place.reviewsCount);
+      if (!Number.isFinite(reviews)) return false;
+      return reviews >= MIN_REVIEWS_THRESHOLD;
+    },
+    [minReviewsOnly]
   );
 
   useEffect(() => {
@@ -190,20 +202,22 @@ export default function App() {
 
   const availableCount = useMemo(() => {
     return data.reduce((count, place, idx) => {
+      if (!passesReviewFilter(place)) return count;
       return visited.has(placeKey(place, idx)) ? count : count + 1;
     }, 0);
-  }, [data, visited]);
+  }, [data, visited, passesReviewFilter]);
 
   const seenCount = useMemo(() => {
     let count = 0;
     seen.forEach((idx) => {
       const place = data[idx];
       if (!place) return;
+      if (!passesReviewFilter(place)) return;
       if (visited.has(placeKey(place, idx))) return;
       count += 1;
     });
     return count;
-  }, [seen, data, visited]);
+  }, [seen, data, visited, passesReviewFilter]);
 
   const remainingCount = Math.max(0, availableCount - seenCount);
   const visitedCount = visited.size;
@@ -214,6 +228,17 @@ export default function App() {
     () => (currentIdx != null && data[currentIdx] ? data[currentIdx] : null),
     [currentIdx, data]
   );
+  useEffect(() => {
+    if (currentIdx == null) return;
+    const next = data[currentIdx];
+    if (!passesReviewFilter(next)) {
+      setCurrentIdx(null);
+      setSelectionSource(null);
+      if (minReviewsOnly) {
+        setStatusMessage(`Current pick hidden because it has fewer than ${MIN_REVIEWS_THRESHOLD} reviews.`);
+      }
+    }
+  }, [currentIdx, data, passesReviewFilter, minReviewsOnly]);
 
   function handlePickRandom() {
     if (loading || !data.length) return;
@@ -223,12 +248,17 @@ export default function App() {
     for (let i = 0; i < data.length; i++) {
       const place = data[i];
       if (!place) continue;
+      if (!passesReviewFilter(place)) continue;
       if (visited.has(placeKey(place, i))) continue;
       available.push(i);
       availableSet.add(i);
     }
     if (!available.length) {
-      setStatusMessage("All places are marked visited. Clear visited to start over.");
+      setStatusMessage(
+        minReviewsOnly
+          ? `No places with at least ${MIN_REVIEWS_THRESHOLD} reviews are available.`
+          : "All places are marked visited. Clear visited to start over."
+      );
       setCurrentIdx(null);
       setSelectionSource(null);
       return;
@@ -356,6 +386,7 @@ export default function App() {
     if (!userLocation) return [];
     const entries = data
       .map((place, idx) => {
+        if (!passesReviewFilter(place)) return null;
         const key = placeKey(place, idx);
         const coords = geoCache[key];
         if (!coords) return null;
@@ -374,7 +405,7 @@ export default function App() {
       .sort((a, b) => a.distanceKm - b.distanceKm)
       .slice(0, 30);
     return entries;
-  }, [userLocation, data, geoCache, visited]);
+  }, [userLocation, data, geoCache, visited, passesReviewFilter]);
 
   const missingCoordsCount = useMemo(() => {
     return data.reduce((missing, place, idx) => {
@@ -388,9 +419,12 @@ export default function App() {
     if (loadError) return loadError;
     if (picking) return "Choosing a spot for you…";
     if (!data.length) return "Dataset loaded but contains no places.";
+    if (minReviewsOnly && availableCount === 0) {
+      return `No places found with at least ${MIN_REVIEWS_THRESHOLD} reviews.`;
+    }
     if (allVisited) return "All places are marked visited. Clear visited to start over.";
     return `${remainingCount} unseen / ${availableCount} unvisited total.`;
-  }, [loading, loadError, picking, data.length, allVisited, remainingCount, availableCount]);
+  }, [loading, loadError, picking, data.length, minReviewsOnly, availableCount, allVisited, remainingCount]);
 
   const heroToneClasses = loadError
     ? "text-rose-600"
@@ -650,6 +684,26 @@ export default function App() {
                   </button>
                 );
               })}
+            </div>
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <span className="text-[11px] uppercase tracking-wide text-slate-400">Filters</span>
+              <button
+                type="button"
+                aria-pressed={minReviewsOnly}
+                onClick={() => setMinReviewsOnly((prev) => !prev)}
+                className={`rounded-full border px-3 py-1 text-xs font-semibold tracking-wide transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-400 ${
+                  minReviewsOnly
+                    ? "border-amber-500 bg-amber-500 text-white shadow-sm"
+                    : "border-slate-200 bg-white text-slate-600 hover:border-amber-200 hover:text-amber-600"
+                }`}
+              >
+                {`≥${MIN_REVIEWS_THRESHOLD} reviews`}
+              </button>
+              {minReviewsOnly && (
+                <span className="text-xs text-amber-700">
+                  Showing places with at least {MIN_REVIEWS_THRESHOLD} reviews.
+                </span>
+              )}
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
